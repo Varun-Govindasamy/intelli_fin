@@ -55,10 +55,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# CORS — origins are read from env so Railway can allow the Vercel frontend
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React development server
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
