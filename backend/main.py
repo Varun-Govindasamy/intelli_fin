@@ -12,6 +12,7 @@ from app.services.trade_agent_service import TradeAgentService
 from app.services.flowchart_service import FlowchartService
 from app.services.news_service import NewsService
 from app.services.chat_service import ChatService
+from app.services.guardrails_service import guardrails_service
 from app.utils.file_manager import FileManager
 
 # Load environment variables
@@ -92,11 +93,70 @@ async def upload_documents(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/rag/query")
-async def query_documents(query: str = Form(...)):
-    """Query the RAG system with a financial question"""
+async def query_documents(
+    query: str = Form(...),
+    # Content-based filters (extracted from document text)
+    year: Optional[str] = Form(default=None),          # Comma-separated years (e.g., "2024,2023")
+    month: Optional[str] = Form(default=None),         # Comma-separated months 1-12 (e.g., "1,2,3")
+    day: Optional[str] = Form(default=None),           # Comma-separated days 1-31 (e.g., "15,16")
+    category: Optional[str] = Form(default=None),      # Comma-separated categories (e.g., "travel,food")
+    amount_min: Optional[float] = Form(default=None),  # Minimum amount filter
+    amount_max: Optional[float] = Form(default=None),  # Maximum amount filter
+    # File-based filters
+    source_files: Optional[str] = Form(default=None),  # Comma-separated file names
+    page_numbers: Optional[str] = Form(default=None),  # Comma-separated page numbers
+):
+    """
+    Query the RAG system with a financial question and optional metadata filters.
+    
+    Content filters: year, month, day, category, amount_min, amount_max
+    File filters: source_files, page_numbers
+    
+    Categories: travel, food, utilities, salary, rent, insurance, healthcare, 
+                entertainment, shopping, investment, tax, education, miscellaneous
+    """
     try:
-        response = await rag_service.query(query)
+        # Build filters dict from form parameters
+        filters = {}
+        
+        # Content-based filters
+        if year:
+            filters["year"] = [int(y.strip()) for y in year.split(",") if y.strip()]
+        
+        if month:
+            filters["month"] = [int(m.strip()) for m in month.split(",") if m.strip()]
+        
+        if day:
+            filters["day"] = [int(d.strip()) for d in day.split(",") if d.strip()]
+        
+        if category:
+            filters["category"] = [c.strip().lower() for c in category.split(",") if c.strip()]
+        
+        if amount_min is not None:
+            filters["amount_min"] = amount_min
+        
+        if amount_max is not None:
+            filters["amount_max"] = amount_max
+        
+        # File-based filters
+        if source_files:
+            filters["source_file"] = [f.strip() for f in source_files.split(",") if f.strip()]
+        
+        if page_numbers:
+            filters["page_number"] = [int(p.strip()) for p in page_numbers.split(",") if p.strip()]
+        
+        # Pass filters only if any were provided
+        response = await rag_service.query(query, filters=filters if filters else None)
         return {"response": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rag/documents")
+async def get_available_documents():
+    """Get list of all uploaded documents and their metadata for filtering"""
+    try:
+        documents_info = await rag_service.get_available_documents()
+        return documents_info
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -205,6 +265,79 @@ async def generate_summary(content: str = Form(...)):
     try:
         summary = await chat_service.generate_summary(content)
         return {"summary": summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Guardrails Endpoints
+@app.post("/api/guardrails/validate-input")
+async def validate_input(query: str = Form(...)):
+    """Validate user input against guardrails (injection, PII, topic relevance)"""
+    try:
+        is_allowed, message, details = await guardrails_service.validate_input(query)
+        return {
+            "allowed": is_allowed,
+            "message": message,
+            "details": details
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/guardrails/validate-output")
+async def validate_output(
+    response: str = Form(...),
+    query: str = Form(...),
+    context: Optional[str] = Form(default=""),
+    confidence_score: Optional[float] = Form(default=1.0)
+):
+    """Validate and process AI output (grounding, disclaimers, warnings)"""
+    try:
+        processed_response, details = await guardrails_service.validate_output(
+            response=response,
+            query=query,
+            context=context,
+            confidence_score=confidence_score
+        )
+        return {
+            "processed_response": processed_response,
+            "details": details
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/guardrails/status")
+async def get_guardrails_status():
+    """Get current guardrails configuration status"""
+    return {
+        "enabled": guardrails_service.enabled,
+        "strict_mode": guardrails_service.strict_mode,
+        "provider": "NVIDIA NeMo Guardrails",
+        "input_checks": [
+            "domain_control", "jailbreak_injection", "pii_masking",
+            "regulatory_compliance", "sensitive_query_flagging"
+        ],
+        "output_checks": [
+            "hallucination_grounding", "disclaimer_injection", "pii_leakage",
+            "numerical_sanity", "sentiment_toxicity", "source_citation"
+        ]
+    }
+
+@app.post("/api/guardrails/configure")
+async def configure_guardrails(
+    enabled: Optional[bool] = Form(default=None),
+    strict_mode: Optional[bool] = Form(default=None)
+):
+    """Configure guardrails settings"""
+    try:
+        if enabled is not None:
+            guardrails_service.set_enabled(enabled)
+        if strict_mode is not None:
+            guardrails_service.set_strict_mode(strict_mode)
+        
+        return {
+            "enabled": guardrails_service.enabled,
+            "strict_mode": guardrails_service.strict_mode,
+            "message": "Guardrails configuration updated"
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

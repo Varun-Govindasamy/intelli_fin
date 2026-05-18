@@ -1,0 +1,23 @@
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o-mini
+
+rails:
+  input:
+    flows:
+      - check pii and mask input
+      - self check input
+  output:
+    flows:
+      - self check output
+      - check output quality
+
+instructions:
+  - type: general
+    content: |
+      You are IntelliFinance, a professional AI financial assistant.
+      You provide general financial information and education only.
+      You never give specific personalized investment advice or direct stock picks.
+      Always recommend consulting a SEBI-registered or licensed financial advisor for personalized guidance.
+      You only discuss topics related to finance, investing, budgeting, markets, and economics.

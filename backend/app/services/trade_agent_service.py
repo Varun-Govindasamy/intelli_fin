@@ -11,6 +11,7 @@ import yfinance as yf
 import numpy as np
 from dataclasses import dataclass
 import aiohttp
+from app.services.guardrails_service import guardrails_service
 
 load_dotenv()
 
@@ -35,8 +36,7 @@ class StockAnalysis:
 class TradeAgentService:
     def __init__(self):
         self.openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.ollama_base_url = "http://localhost:11434"  # Default Ollama URL
-        self.granite_model = "granite3.3:2b"
+        self.model = "gpt-4o-mini"
         self.decision_history = []
         self.memory_file = "./data/trade_decisions.json"
         self._load_memory()
@@ -60,40 +60,25 @@ class TradeAgentService:
         except Exception as e:
             print(f"Error saving memory: {e}")
     
-    async def _call_granite_model(self, prompt: str, system_message: str = None) -> str:
-        """Call Granite model via Ollama API"""
+    async def _call_openai_model(self, prompt: str, system_message: str = None) -> str:
+        """Call OpenAI model via API"""
         try:
-            url = f"{self.ollama_base_url}/api/generate"
-            
-            # Construct the full prompt with system message if provided
-            full_prompt = prompt
+            messages = []
             if system_message:
-                full_prompt = f"System: {system_message}\n\nUser: {prompt}"
-            
-            payload = {
-                "model": self.granite_model,
-                "prompt": full_prompt,
-                "stream": False,
-                "options": {
-                    "temperature": 0.3,  # Lower temperature for more focused financial analysis
-                    "top_p": 0.9,
-                    "max_tokens": 200
-                }
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload, timeout=30) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        return result.get('response', '').strip()
-                    else:
-                        error_text = await response.text()
-                        print(f"Ollama API error {response.status}: {error_text}")
-                        return f"Granite model error: {response.status}"
-                        
+                messages.append({"role": "system", "content": system_message})
+            messages.append({"role": "user", "content": prompt})
+
+            response = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=200,
+                temperature=0.3
+            )
+            return response.choices[0].message.content.strip()
+
         except Exception as e:
-            print(f"Error calling Granite model: {e}")
-            return f"Error connecting to Granite model: {str(e)}"
+            print(f"Error calling OpenAI model: {e}")
+            return f"Error connecting to OpenAI: {str(e)}"
     
     def get_stock_price(self, symbol: str) -> str:
         """Get current stock price for a given symbol"""
@@ -388,6 +373,22 @@ class TradeAgentService:
                                          user_profile: UserProfile) -> Dict:
         """Comprehensive trade analysis with user preferences and position sizing"""
         try:
+            # Input guardrails - validate the request
+            query_for_validation = f"Comprehensive trade analysis for {', '.join(symbols)} with budget ${user_profile.budget}"
+            is_allowed, validation_msg, validation_details = await guardrails_service.validate_input(query_for_validation)
+            
+            if not is_allowed:
+                print(f"⛔ Comprehensive analysis blocked by guardrails: {validation_msg}")
+                return {
+                    'error': f"Request blocked: {validation_msg}",
+                    'timestamp': datetime.now().isoformat(),
+                    'guardrails': {'blocked': True, 'reason': validation_msg}
+                }
+            
+            # Log any warnings  
+            if validation_details.get("warnings"):
+                print(f"⚠️ Guardrail warnings: {validation_details['warnings']}")
+            
             stock_analyses = []
             
             # Analyze each stock
@@ -450,6 +451,17 @@ class TradeAgentService:
                     'reasoning': f"Growth potential: {stock.growth_potential_score:.1%}, Risk: {risk_level}, Sentiment: {'Positive' if stock.sentiment_score > 0.6 else 'Neutral' if stock.sentiment_score > 0.4 else 'Negative'}"
                 })
             
+            # Generate the summary text
+            raw_summary = f"Based on your ${user_profile.budget:,.0f} budget and {user_profile.risk_level} risk tolerance, we recommend a diversified portfolio with {len(recommendations)} stocks. Expected growth potential: {total_growth_potential:.1%}, Portfolio risk: {risk_level}."
+            
+            # Output guardrails - validate and enhance the summary
+            processed_summary, output_details = await guardrails_service.validate_output(
+                response=raw_summary,
+                query=query_for_validation,
+                context=str(recommendations),
+                confidence_score=0.7
+            )
+            
             return {
                 'user_profile': {
                     'budget': user_profile.budget,
@@ -471,8 +483,12 @@ class TradeAgentService:
                     f"Concentration risk: {'Low' if len(recommendations) >= 5 else 'Medium' if len(recommendations) >= 3 else 'High'}",
                     f"Time horizon compatibility: {'Good' if user_profile.time_horizon == 'long' else 'Moderate' if user_profile.time_horizon == 'medium' else 'Consider longer horizon'}"
                 ],
-                'summary': f"Based on your ${user_profile.budget:,.0f} budget and {user_profile.risk_level} risk tolerance, we recommend a diversified portfolio with {len(recommendations)} stocks. Expected growth potential: {total_growth_potential:.1%}, Portfolio risk: {risk_level}.",
-                'timestamp': datetime.now().isoformat()
+                'summary': processed_summary,
+                'timestamp': datetime.now().isoformat(),
+                'guardrails': {
+                    'input_validation': 'passed',
+                    'output_validation': output_details
+                }
             }
             
         except Exception as e:
@@ -484,6 +500,24 @@ class TradeAgentService:
     async def analyze_trade_decision(self, company_symbol: str, analysis_type: str = "comprehensive") -> Dict:
         """Run the trade decision analysis workflow"""
         try:
+            # Input guardrails - validate the company symbol query
+            query_for_validation = f"Analyze trade decision for {company_symbol} with {analysis_type} analysis"
+            is_allowed, validation_msg, validation_details = await guardrails_service.validate_input(query_for_validation)
+            
+            if not is_allowed:
+                print(f"⛔ Trade analysis blocked by guardrails: {validation_msg}")
+                return {
+                    "symbol": company_symbol,
+                    "timestamp": datetime.now().isoformat(),
+                    "error": f"Request blocked: {validation_msg}",
+                    "recommendation": "BLOCKED",
+                    "summary": validation_msg
+                }
+            
+            # Log any warnings
+            if validation_details.get("warnings"):
+                print(f"⚠️ Guardrail warnings: {validation_details['warnings']}")
+            
             # Create agents
             research_agent = self.create_research_agent()
             analysis_agent = self.create_analysis_agent()
@@ -562,7 +596,25 @@ class TradeAgentService:
             
             # Generate summary using OpenAI
             summary = await self._generate_summary(decision_data["full_analysis"])
-            decision_data["summary"] = summary
+            
+            # Output guardrails - validate and enhance the summary
+            processed_summary, output_details = await guardrails_service.validate_output(
+                response=summary,
+                query=query_for_validation,
+                context=decision_data["full_analysis"],
+                confidence_score=0.6 if decision_data["confidence"] == "Medium" else 0.8 if decision_data["confidence"] == "High" else 0.4
+            )
+
+            decision_data["summary"] = processed_summary
+            decision_data["guardrails"] = {
+                "input_validation": "passed",
+                "output_validation": output_details
+            }
+
+            # Log NeMo output guardrail results
+            print(f"🛡️ [NeMo] Trade Analysis Output Guardrails Applied:")
+            print(f"   Grounding : {output_details.get('grounding', {}).get('is_grounded', 'N/A')}")
+            print(f"   Disclaimer: {output_details.get('disclaimer', {}).get('action', 'N/A')}")
             
             return decision_data
             
@@ -587,25 +639,16 @@ class TradeAgentService:
             return "HOLD"
     
     async def _generate_summary(self, full_analysis: str) -> str:
-        """Generate a concise summary using Granite model via Ollama"""
+        """Generate a concise summary using OpenAI"""
         try:
             system_message = "You are a financial analyst. Summarize the following investment analysis in 2-3 sentences, highlighting the key recommendation and main reasoning. Be concise and focus on actionable insights."
-            
+
             prompt = f"Summarize this investment analysis:\n\n{full_analysis[:2000]}..."  # Limit input length
-            
-            # Call Granite model
-            summary = await self._call_granite_model(prompt, system_message)
-            
-            # Fallback to OpenAI if Granite fails
-            if summary.startswith("Error") or summary.startswith("Granite model error"):
-                print("Granite model failed, falling back to OpenAI...")
-                return await self._generate_summary_openai(full_analysis)
-            
-            return summary
-            
+
+            return await self._call_openai_model(prompt, system_message)
+
         except Exception as e:
-            print(f"Granite summary generation failed: {e}")
-            # Fallback to OpenAI
+            print(f"Summary generation failed: {e}")
             return await self._generate_summary_openai(full_analysis)
     
     async def _generate_summary_openai(self, full_analysis: str) -> str:
