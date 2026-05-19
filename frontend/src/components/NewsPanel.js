@@ -22,17 +22,6 @@ const NewsPanel = () => {
   const [isLoadingCompany, setIsLoadingCompany] = useState(true);
   const [activeTab, setActiveTab] = useState("general");
 
-  useEffect(() => {
-    loadGeneralNews();
-    loadCompanyNews();
-  }, [loadCompanyNews]);
-
-  useEffect(() => {
-    if (watchedSymbols.length > 0) {
-      loadCompanyNews();
-    }
-  }, [watchedSymbols, loadCompanyNews]);
-
   const loadGeneralNews = async () => {
     setIsLoadingGeneral(true);
     try {
@@ -63,6 +52,17 @@ const NewsPanel = () => {
       setIsLoadingCompany(false);
     }
   }, [watchedSymbols]);
+
+  useEffect(() => {
+    loadGeneralNews();
+    loadCompanyNews();
+  }, [loadCompanyNews]);
+
+  useEffect(() => {
+    if (watchedSymbols.length > 0) {
+      loadCompanyNews();
+    }
+  }, [watchedSymbols, loadCompanyNews]);
 
   const addSymbol = (e) => {
     e.preventDefault();

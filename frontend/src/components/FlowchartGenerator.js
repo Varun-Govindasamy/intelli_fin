@@ -66,7 +66,7 @@ const FlowchartGenerator = () => {
     }
 
     setIsGenerating(true);
-    setIsFormCollapsed(true); // Collapse form when generating
+    setIsFormCollapsed(true);
 
     try {
       const response = await apiService.generateFlowchart(
@@ -79,7 +79,7 @@ const FlowchartGenerator = () => {
         setNodes(response.nodes);
         setEdges(response.edges);
         setGeneratedPlan(response.metadata?.generated_plan || "");
-        setShowPlanDetails(true); // Auto-show plan details when generated
+        setShowPlanDetails(true);
         toast.success("Flowchart generated successfully!");
       } else {
         throw new Error("Invalid response format");
@@ -87,14 +87,13 @@ const FlowchartGenerator = () => {
     } catch (error) {
       console.error("Error generating flowchart:", error);
       toast.error("Failed to generate flowchart. Please try again.");
-      setIsFormCollapsed(false); // Expand form if there's an error
-
-      // Create a basic fallback flowchart
-      createFallbackFlowchart();
+      setIsFormCollapsed(false);
+      createFallbackFlowchart(); // eslint-disable-line no-use-before-define
     } finally {
       setIsGenerating(false);
     }
   };
+
 
   const createFallbackFlowchart = () => {
     const fallbackNodes = [
