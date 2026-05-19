@@ -28,22 +28,43 @@ file_manager = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     global rag_service, trade_agent_service, flowchart_service, news_service, chat_service, file_manager
-    
-    # Initialize services
+
     file_manager = FileManager()
-    rag_service = RAGService()
-    trade_agent_service = TradeAgentService()
-    flowchart_service = FlowchartService()
-    news_service = NewsService()
-    chat_service = ChatService()
-    
-    # Initialize RAG service
-    await rag_service.initialize()
-    
+
+    try:
+        rag_service = RAGService()
+        await rag_service.initialize()
+        print("✅ RAG service initialized")
+    except Exception as e:
+        print(f"⚠️  RAG service failed to initialize: {e}")
+
+    try:
+        trade_agent_service = TradeAgentService()
+        print("✅ Trade agent service initialized")
+    except Exception as e:
+        print(f"⚠️  Trade agent service failed to initialize: {e}")
+
+    try:
+        flowchart_service = FlowchartService()
+        print("✅ Flowchart service initialized")
+    except Exception as e:
+        print(f"⚠️  Flowchart service failed to initialize: {e}")
+
+    try:
+        news_service = NewsService()
+        print("✅ News service initialized")
+    except Exception as e:
+        print(f"⚠️  News service failed to initialize: {e}")
+
+    try:
+        chat_service = ChatService()
+        print("✅ Chat service initialized")
+    except Exception as e:
+        print(f"⚠️  Chat service failed to initialize: {e}")
+
     yield
-    
+
     # Shutdown
     pass
 
