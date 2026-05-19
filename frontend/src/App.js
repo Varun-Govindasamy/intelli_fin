@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+
 import { Toaster } from "react-hot-toast";
 import Sidebar from "./components/Sidebar";
 import MainChat from "./components/MainChat";

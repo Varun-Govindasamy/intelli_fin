@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   NewspaperIcon,
   ArrowTopRightOnSquareIcon,
@@ -25,13 +25,13 @@ const NewsPanel = () => {
   useEffect(() => {
     loadGeneralNews();
     loadCompanyNews();
-  }, []);
+  }, [loadCompanyNews]);
 
   useEffect(() => {
     if (watchedSymbols.length > 0) {
       loadCompanyNews();
     }
-  }, [watchedSymbols]);
+  }, [watchedSymbols, loadCompanyNews]);
 
   const loadGeneralNews = async () => {
     setIsLoadingGeneral(true);
@@ -46,7 +46,7 @@ const NewsPanel = () => {
     }
   };
 
-  const loadCompanyNews = async () => {
+  const loadCompanyNews = useCallback(async () => {
     if (watchedSymbols.length === 0) {
       setIsLoadingCompany(false);
       return;
@@ -62,7 +62,7 @@ const NewsPanel = () => {
     } finally {
       setIsLoadingCompany(false);
     }
-  };
+  }, [watchedSymbols]);
 
   const addSymbol = (e) => {
     e.preventDefault();
