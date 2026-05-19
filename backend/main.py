@@ -56,13 +56,18 @@ app = FastAPI(
 )
 
 # CORS — origins are read from env so Railway can allow the Vercel frontend
-_cors_origins_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000")
-_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+# Set CORS_ORIGINS on Railway to your Vercel URL (comma-separated for multiple)
+# If not set, defaults to allow all origins (safe for public APIs)
+_cors_origins_raw = os.getenv("CORS_ORIGINS", "*")
+if _cors_origins_raw.strip() == "*":
+    _cors_origins = ["*"]
+else:
+    _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_credentials=True,
+    allow_credentials=False if "*" in _cors_origins else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
