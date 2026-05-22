@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 30000, // default 30s for fast endpoints
 });
 
 // Request interceptor
@@ -31,12 +31,21 @@ api.interceptors.response.use(
   }
 );
 
+// Heavy ML operations need longer timeouts
+const UPLOAD_TIMEOUT   = 300000; // 5 min  – PDF ingestion + embeddings
+const RAG_TIMEOUT      = 120000; // 2 min  – vector search + LLM
+const TRADE_TIMEOUT    = 180000; // 3 min  – CrewAI multi-agent pipeline
+const FLOWCHART_TIMEOUT = 120000; // 2 min – GPT flowchart generation
+const CHAT_TIMEOUT     = 60000;  // 1 min  – general chat
+
 export const apiService = {
   // General chat
   generalChat: async (message) => {
     const formData = new FormData();
     formData.append("message", message);
-    const response = await api.post("/api/chat/general", formData);
+    const response = await api.post("/api/chat/general", formData, {
+      timeout: CHAT_TIMEOUT,
+    });
     return response.data;
   },
 
@@ -47,9 +56,8 @@ export const apiService = {
       formData.append("files", file);
     });
     const response = await api.post("/api/rag/upload", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: UPLOAD_TIMEOUT,
     });
     return response.data;
   },
@@ -57,7 +65,9 @@ export const apiService = {
   queryRAG: async (query) => {
     const formData = new FormData();
     formData.append("query", query);
-    const response = await api.post("/api/rag/query", formData);
+    const response = await api.post("/api/rag/query", formData, {
+      timeout: RAG_TIMEOUT,
+    });
     return response.data;
   },
 
@@ -66,7 +76,9 @@ export const apiService = {
     const formData = new FormData();
     formData.append("company_symbol", symbol);
     formData.append("analysis_type", analysisType);
-    const response = await api.post("/api/trade/analyze", formData);
+    const response = await api.post("/api/trade/analyze", formData, {
+      timeout: TRADE_TIMEOUT,
+    });
     return response.data;
   },
 
@@ -91,7 +103,8 @@ export const apiService = {
     formData.append("symbols", symbols);
     const response = await api.post(
       "/api/trade/comprehensive-analysis",
-      formData
+      formData,
+      { timeout: TRADE_TIMEOUT }
     );
     return response.data;
   },
@@ -106,7 +119,9 @@ export const apiService = {
     formData.append("financial_goal", goal);
     formData.append("time_horizon", timeHorizon);
     formData.append("risk_tolerance", riskTolerance);
-    const response = await api.post("/api/flowchart/generate", formData);
+    const response = await api.post("/api/flowchart/generate", formData, {
+      timeout: FLOWCHART_TIMEOUT,
+    });
     return response.data;
   },
 
@@ -128,7 +143,9 @@ export const apiService = {
   generateSummary: async (content) => {
     const formData = new FormData();
     formData.append("content", content);
-    const response = await api.post("/api/chat/summary", formData);
+    const response = await api.post("/api/chat/summary", formData, {
+      timeout: CHAT_TIMEOUT,
+    });
     return response.data;
   },
 
